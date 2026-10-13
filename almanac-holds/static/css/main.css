@@ -1,0 +1,530 @@
+/* ── Palette ──────────────────────────────────────────────────────────────────
+   Wada Sanzo classic combination #340, plus white for text.
+   No other colors, tints, or alpha blends are used anywhere in this sheet. */
+
+:root {
+  --peach-red: #f15a30;
+  --sea-green: #00b49b;
+  /* Darkened from the Wada Sanzo value (#b6bfc1). Same hue, lower value. */
+  --neutral-gray: #4f5557;
+  --black: #111314;
+  --white: #ffffff;
+
+  /* One padding standard for every panel and cell on the site. Split into
+     axes so rules that need to cancel it (the flush label strip) can do the
+     arithmetic instead of hardcoding a matching value. */
+  --pad-y: 0.25rem;
+  --pad-x: 0.3rem;
+  --pad-cell: var(--pad-y) var(--pad-x);
+
+  /* Line box height, stated as a length so layout can do arithmetic with it. */
+  --line: 1.5rem;
+  /* Entries per column in the table of contents before it wraps. */
+  --toc-lines: 5;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* One type size and one weight throughout. The universal rules are deliberate:
+   they stop headings, <strong>, and any future markup from introducing a second
+   size or a bold face. Hierarchy is carried by color alone. */
+/* The ground color lives on <html> so <body> can stay transparent and let the
+   backdrop canvas show through from behind it. */
+html {
+  font-size: 11px;
+  background: var(--black);
+}
+
+* {
+  font-size: 1rem;
+  font-weight: 200;
+  /* Martian Mono at 75% width: the condensed cut, which sets taller and
+     narrower than the default. */
+  font-stretch: 75%;
+}
+
+/* Everything is monospace. "Noto Sans SC" trails the stack only for CJK, which
+   Martian Mono does not cover — Google Fonts serves no monospace CJK face.
+   CJK glyphs are full-width and uniform, so they still set to an even rhythm. */
+body {
+  font-family: "Martian Mono", "Noto Sans SC", monospace;
+  font-style: normal;
+  /* A length, not a ratio, so the TOC height cap resolves to exact line boxes.
+     Safe here because every element on the site is the same font size. */
+  line-height: var(--line);
+  color: var(--white);
+  background: transparent;
+  padding: 1.5rem;
+
+  /* Light-on-dark text renders heavier than it should with subpixel AA; these
+     thin it back to the intended weight. Matters more here than usual, since
+     everything is one weight and small. */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+a {
+  color: var(--sea-green);
+}
+
+a:hover {
+  color: var(--peach-red);
+}
+
+img {
+  max-width: 100%;
+  display: block;
+}
+
+/* ── Backdrop ─────────────────────────────────────────────────────────────────
+   Fixed full-viewport canvas sitting behind the page content. It is decorative
+   and carries no information, so it is hidden from assistive tech and ignores
+   pointer events entirely. */
+
+.scene-backdrop,
+.ship-backdrop {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  z-index: 0;
+}
+
+/* The lattice is driven entirely by hovering the listing, so it never needs
+   pointer events of its own. */
+.scene-backdrop {
+  pointer-events: none;
+}
+
+.ship-backdrop {
+  border: 0;
+}
+
+/* The ship runs OrbitControls, so it does need them. The content layer sits
+   above it and would otherwise absorb every drag across its whole box — even
+   where it is visually empty, since a transparent box is still a hit target.
+   Turning pointer events off on the containers and back on for the links
+   alone lets drags reach the ship while the listing stays clickable. */
+.toc-ship main,
+.toc-ship .site-header {
+  pointer-events: none;
+}
+
+.toc-ship a {
+  pointer-events: auto;
+}
+
+.site-header,
+main {
+  position: relative;
+  z-index: 1;
+}
+
+code, pre, kbd, samp {
+  color: var(--neutral-gray);
+}
+
+/* ── Panel system ─────────────────────────────────────────────────────────────
+   Blocks are unruled — separation comes from the fills and the padding, not
+   from borders. */
+
+.panel {
+  padding: var(--pad-cell);
+}
+
+/* Label strip across the top of a panel, flush to its edges. */
+.panel-label {
+  display: block;
+  margin: calc(var(--pad-y) * -1) calc(var(--pad-x) * -1) var(--pad-y);
+  padding: var(--pad-cell);
+  color: var(--neutral-gray);
+}
+
+/* Nav */
+
+.site-nav {
+  display: flex;
+  gap: 1.5rem;
+}
+
+.site-nav a {
+  padding: var(--pad-cell);
+  text-decoration: none;
+}
+
+/* Artist page */
+
+/* The title box as the page header: two lines tall less the inset, the same
+   as on the homepage, and as wide as the prose column. The small gap below it
+   matches the one under the homepage's title box. */
+.artist-page .site-title {
+  height: calc(var(--line) * 2 - var(--pad-y) * 2);
+  max-width: 66ch;
+  margin-bottom: calc(var(--pad-y) * 2);
+}
+
+/* The sea runs behind the artist pages, so every panel gets a solid black
+   ground to keep its text readable. */
+.artist-page .panel {
+  background-color: var(--black);
+}
+
+/* Text-only pages stay a single measured column. Pages with media become two
+   columns — prose left, media right — so the video fills what was empty space.
+   The aside is offset from the prose column by a gap. */
+.artist {
+  max-width: 66ch;
+}
+
+/* No max-width: the grid spans the viewport like the nav and footer do. Prose
+   holds its 66ch measure and the media column absorbs everything left over. */
+.artist.has-media {
+  max-width: none;
+  display: grid;
+  grid-template-columns: minmax(0, 66ch) minmax(0, 1fr);
+  align-items: start;
+}
+
+.artist.has-media .artist-aside {
+  margin-left: 1.5rem;
+  position: sticky;
+  top: 1.5rem;
+}
+
+/* Below this the two columns no longer both fit at a readable measure. */
+@media (max-width: 1100px) {
+  .artist.has-media {
+    display: block;
+    max-width: 66ch;
+  }
+
+  .artist.has-media .artist-aside {
+    margin-left: 0;
+    margin-top: 1.5rem;
+    position: static;
+  }
+}
+
+.artist-meta {
+  display: flex;
+  gap: 1.5rem;
+  list-style: none;
+  margin-top: var(--pad-y);
+  color: var(--neutral-gray);
+}
+
+.artist-meta dt {
+  display: none;
+}
+
+/* Media runs edge to edge — no padding inset. The label keeps its own. */
+.artist-video,
+.artist-featured-image {
+  padding: 0;
+}
+
+.artist-video > .panel-label,
+.artist-featured-image > .panel-label {
+  margin: 0;
+  padding: var(--pad-cell);
+}
+
+.artist-featured-image img {
+  width: 100%;
+}
+
+.artist-video-frame {
+  aspect-ratio: 16 / 9;
+}
+
+.artist-video-frame iframe {
+  width: 100%;
+  height: 100%;
+  display: block;
+  border: 0;
+}
+
+/* The artist block: the name and its details, framed in peach red the way
+   the title box above it is framed in sea green. */
+.artist-header {
+  border: 1px solid var(--peach-red);
+}
+
+.artist-name {
+  color: var(--peach-red);
+}
+
+/* The work title, as plain sea-green text. */
+.artist-work-title {
+  color: var(--sea-green);
+}
+
+.artist-body h2 {
+  color: var(--sea-green);
+  margin-bottom: 1rem;
+}
+
+.artist-body h2 + p {
+  margin-top: 0;
+}
+
+/* Justified, newspaper-style. Monospace can't tighten letters to make a line
+   fit, so all the slack lands in the word gaps — hyphenation is doing real work
+   here, breaking long words instead of letting rivers open up. It relies on the
+   lang attribute in base.njk. */
+.artist-body p {
+  margin-bottom: 1rem;
+  text-align: justify;
+  hyphens: auto;
+}
+
+.artist-body p:last-child {
+  margin-bottom: 0;
+}
+
+/* Table of contents */
+
+.toc {
+  max-width: none;
+}
+
+/* Each entry is one line of running text — name, a single space, then the work
+   title. The space is the literal one between the spans in the markup, so the
+   two read as continuous text rather than as separate columns. */
+/* Fixed row count, columns generated as needed and filled top-to-bottom. Equal
+   1fr columns keep the block inside the page width — sizing columns to their
+   content instead lets one long title push the rest off-screen. */
+.toc-list {
+  list-style: none;
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-rows: repeat(var(--toc-lines), var(--line));
+  grid-auto-columns: minmax(0, 1fr);
+  column-gap: 2rem;
+}
+
+/* The title box: the site name and a "?" link to the about page, framed in
+   sea green. The homepage sets it in the listing; the artist pages use it as
+   their header. */
+.title-box {
+  display: flex;
+  border: 1px solid var(--sea-green);
+  color: var(--sea-green);
+}
+
+/* The name takes the space the about link leaves, centred top to bottom and
+   set to the left. Its inset matches the about link's margin. */
+.title-box-name {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  padding-left: calc(var(--pad-y) * 2);
+  color: var(--sea-green);
+  text-decoration: none;
+}
+
+/* A box at the right end of the title box, inset by a small margin so it
+   reads as a box inside a box. The flex row stretches its height to the
+   title box less the margins. The width is fixed, about 77px at the 11px
+   root size. */
+.title-box-about {
+  flex: none;
+  width: 7rem;
+  margin: calc(var(--pad-y) * 2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--sea-green);
+  color: var(--sea-green);
+  text-decoration: none;
+}
+
+/* Where the name is a link, as on the artist pages, it turns white on hover
+   rather than the site's usual peach red. */
+.title-box-name:hover {
+  color: var(--white);
+}
+
+.title-box-about:hover {
+  background: var(--white);
+  color: var(--black);
+}
+
+/* On the homepage the title box sits at the top of the listing's first
+   column. It spans the rows the entries leave spare (--toc-title-rows, set by
+   the template), so every column ends on the same row. The bottom margin
+   shrinks the box, not the rows: a grid item's margin comes out of its own
+   stretched size, so the rows keep their height and the entries below stay
+   on the line grid, with a small gap above the next one. */
+.toc-title {
+  grid-row: span var(--toc-title-rows, 3);
+  margin-bottom: calc(var(--pad-y) * 2);
+}
+
+/* Homepage layout: --toc-columns of listing, then one more column for the
+   ship's fixed views. The listing drops from 3 columns to 2 and then 1 as
+   the screen narrows; each step picks the row and title counts the template
+   worked out for that column count. Wide and medium screens give the panels
+   a column the same width as a listing column. The listing's own grid has
+   the same column gap, so its columns line up with the page columns exactly.
+
+   One listing column needs about 280px for a name, its leader, and a title,
+   which sets the breakpoints: 4 such columns fit from about 1200px, 3 from
+   about 760px. */
+.toc-ship .toc {
+  --toc-columns: 3;
+  --toc-lines: var(--toc-lines-3);
+  --toc-title-rows: var(--toc-title-rows-3);
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  column-gap: 2rem;
+  align-items: start;
+}
+
+@media (max-width: 1200px) {
+  .toc-ship .toc {
+    --toc-columns: 2;
+    --toc-lines: var(--toc-lines-2);
+    --toc-title-rows: var(--toc-title-rows-2);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* On a phone the listing takes all the width it can, and the panels shrink
+   to a narrow strip down the right edge. */
+@media (max-width: 760px) {
+  .toc-ship .toc {
+    --toc-columns: 1;
+    --toc-lines: var(--toc-lines-1);
+    --toc-title-rows: var(--toc-title-rows-1);
+    grid-template-columns: minmax(0, 1fr) 18vw;
+    column-gap: 1rem;
+  }
+
+  /* The ship runs right behind the single column here, so each row gets a
+     black ground to keep the name and title readable. This ties with
+     .toc-link:hover on specificity and comes before it, so a hovered row
+     still turns white. */
+  .toc-ship .toc-link {
+    background: var(--black);
+  }
+}
+
+.toc-ship .toc-list {
+  grid-column: 1 / -2;
+  grid-template-columns: repeat(var(--toc-columns), minmax(0, 1fr));
+}
+
+/* The ship's fixed views, stacked in the last column from the top of the page
+   to the bottom of the window, inside the body padding. */
+.ship-panel-stack {
+  grid-column: -2;
+  height: calc(100dvh - 3rem);
+  display: flex;
+  flex-direction: column;
+  gap: var(--line);
+  min-height: 0;
+}
+
+/* Empty frames. The ship iframe behind the page draws each view inside one.
+   They take clicks, which fly the main view to theirs, so they opt back in to
+   pointer events (the homepage turns them off on the containers). */
+.ship-panel {
+  flex: 1 1 0;
+  min-height: 0;
+  border: 1px solid var(--sea-green);
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+/* One line per entry, so the row count is also the line count. Titles too long
+   for their column are clipped rather than wrapped, which would break the
+   fixed height. */
+.toc-entry {
+  min-width: 0;
+}
+
+/* Name left, title right, dotted leader taking up whatever is between them. */
+.toc-link {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5ch;
+  overflow: hidden;
+  white-space: nowrap;
+  padding: 0;
+  background: transparent;
+  text-decoration: none;
+}
+
+.toc-name {
+  flex: 0 0 auto;
+  color: var(--peach-red);
+}
+
+/* flex: 1 on a zero basis, so the leader absorbs the slack rather than
+   claiming width the title needs. */
+.toc-leader {
+  flex: 1 1 0;
+  min-width: 1ch;
+  align-self: center;
+  border-bottom: 1px dotted var(--neutral-gray);
+}
+
+/* Shrinks before the name does, and clips with an ellipsis when a column is
+   too narrow for the full title. */
+.toc-work {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: right;
+  color: var(--white);
+}
+
+.toc-link:hover {
+  background: var(--white);
+}
+
+.toc-link:hover .toc-name,
+.toc-link:hover .toc-work {
+  color: var(--black);
+}
+
+.toc-link:hover .toc-leader {
+  border-bottom-color: var(--black);
+}
+
+
+/* About page */
+
+/* The box sits in the middle of the window, over the sea. The section fills
+   the height the body padding and the header leave: the header is one line
+   plus its link's padding above and below. */
+.about {
+  min-height: calc(100dvh - 3rem - var(--line) - var(--pad-y) * 2);
+  display: grid;
+  place-items: center;
+}
+
+.about-box {
+  max-width: 66ch;
+  padding: calc(var(--pad-y) * 4) calc(var(--pad-x) * 4);
+  border: 1px solid var(--sea-green);
+  background: var(--black);
+}
+
+.about-box h1 {
+  margin-bottom: var(--line);
+  color: var(--sea-green);
+  text-align: center;
+}
+
+.about-box p + p {
+  margin-top: var(--line);
+}

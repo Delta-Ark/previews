@@ -1,0 +1,106 @@
+/* Preview-only ideas layer on top of the existing site. Same five colors,
+   one size, one weight. Each idea is switched by an idea-on-* class on body. */
+
+/* D: the artist's name carries over from the listing into their page. */
+@view-transition { navigation: auto; }
+.artist-name { view-transition-name: artist-name; }
+::view-transition-group(artist-name) {
+  animation-duration: 700ms;
+  animation-timing-function: cubic-bezier(.2, .7, .2, 1);
+}
+::view-transition-old(root) { animation-duration: 300ms; }
+::view-transition-new(root) { animation-duration: 450ms; }
+
+/* The switch panel. */
+.ideas-panel {
+  position: fixed;
+  left: 1.5rem;
+  bottom: 1.5rem;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: var(--pad-cell);
+  background: var(--black);
+  border: 1px dotted var(--neutral-gray);
+}
+.ideas-panel button {
+  padding: 0 var(--pad-x);
+  font-family: inherit;
+  text-align: left;
+  color: var(--sea-green);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.ideas-panel .ideas-toggle { color: var(--neutral-gray); }
+.ideas-panel button[aria-pressed="true"] { background: var(--white); color: var(--black); }
+.ideas-panel button:hover { color: var(--peach-red); }
+.ideas-list { display: flex; flex-direction: column; align-items: flex-start; }
+.ideas-list[hidden] { display: none; }
+
+/* A: a caption that says what the lit buildings are. */
+.idea-caption {
+  position: fixed;
+  left: 1.5rem;
+  bottom: calc(1.5rem + var(--line) * 8.5);
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  padding: var(--pad-cell);
+  background: var(--black);
+  border: 1px solid var(--peach-red);
+  pointer-events: none;
+}
+.idea-caption[hidden],
+body:not(.idea-on-caption) .idea-caption { display: none; }
+.idea-caption .cap-name { color: var(--peach-red); }
+.idea-caption .cap-work { color: var(--white); }
+.idea-caption .cap-hint { color: var(--neutral-gray); }
+
+/* B: entry numbers, in the listing and on the artist page. */
+.idea-num { display: none; flex: 0 0 auto; color: var(--neutral-gray); }
+.idea-on-numbers .idea-num { display: inline; }
+.toc-link:hover .idea-num { color: var(--black); }
+.idea-on-numbers .artist-header { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; }
+
+/* C: clicking dives into the ship before the page changes. */
+.ship-backdrop {
+  transform-origin: 36% 62%;
+  transition: transform 700ms cubic-bezier(.5, 0, .75, 0);
+}
+.idea-diving .ship-backdrop { transform: scale(1.7); }
+.idea-diving .toc-entry:not(.idea-picked),
+.idea-diving .toc-title,
+.idea-diving .ship-panel-stack,
+.idea-diving .idea-caption,
+.idea-diving .ideas-panel {
+  opacity: 0;
+  transition: opacity 300ms;
+}
+.idea-diving:not(.idea-on-morph)::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  background: var(--black);
+  pointer-events: none;
+  animation: idea-black 650ms ease-in forwards;
+}
+@keyframes idea-black {
+  0%, 55% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+/* F: labels on the three ship views. */
+.ship-panel { position: relative; }
+.idea-panel-label {
+  display: none;
+  position: absolute;
+  top: 0;
+  left: 0;
+  padding: var(--pad-cell);
+  color: var(--neutral-gray);
+  background: var(--black);
+}
+.idea-on-labels .idea-panel-label { display: block; }

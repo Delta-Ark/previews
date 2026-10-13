@@ -1,0 +1,15 @@
+/* Sizes intentionally omitted — main.css enforces a single type size sitewide. */
+
+.splash {
+  padding: 2rem;
+}
+
+.splash-title {
+  color: var(--peach-red);
+  margin-bottom: 0.5rem;
+}
+
+.splash-subtitle {
+  margin-bottom: 1.5rem;
+  color: var(--neutral-gray);
+}
