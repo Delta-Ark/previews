@@ -74,8 +74,10 @@
   }
 
   // Tells the ship which entry is lit, where it sits across the page, and how
-  // high a tag can go before it would cover the listing.
+  // high a tag can go before it would cover the listing. A click focuses the
+  // entry it lands on, which is already lit, so that changes nothing.
   function hold(i) {
+    if (i === hot) return;
     hot = i;
     anchor = null;
     if (i === null) {
