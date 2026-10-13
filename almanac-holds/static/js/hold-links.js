@@ -1,20 +1,39 @@
-// Numbered holds, layered on top of the homepage. Each entry gets a number in
-// the listing, and the same number is pinned over its tallest building on the
-// ship, using the ship:anchors message the ship sends. Hovering an entry or a
-// number draws a line between them, and a click opens the artist page out of
-// that hold. ship-highlight.js keeps doing the lighting; this only adds.
+// Numbered holds, layered on top of the homepage. Each entry gets a number.
+// While an entry is lit, the ship picks one of its towers and reports where
+// that tower's top is on screen (ship:anchor). The number sits there on a
+// white tag, and a line runs to it from the end of the entry: down the gap
+// between columns, along under the listing, and down onto the tag. A click
+// flies the view up to that tower, then cuts to black and opens the artist
+// page.
+//
+// ship-highlight.js still does the lighting. This only adds to it.
 (function () {
   var frame = document.querySelector('.ship-backdrop');
+  var list = document.querySelector('.toc-list');
   var links = Array.prototype.slice.call(document.querySelectorAll('.toc-link[data-index]'));
-  if (!frame || !links.length) return;
+  if (!frame || !list || !links.length) return;
 
   var origin = window.location.origin;
-  var anchors = null;
-  var hot = null;
-  var opening = false;
+  var still = window.matchMedia('(prefers-reduced-motion: reduce)');
 
-  function num(i) { return (i < 9 ? '0' : '') + (i + 1); }
-  function post(message) { if (frame.contentWindow) frame.contentWindow.postMessage(message, origin); }
+  // The ship's camera move takes 1.2s; the cut comes a beat after it lands.
+  var FLY_MS = 1300;
+  // How long the line takes to draw out to the tag.
+  var DRAW_MS = 220;
+
+  var hot = null;
+  var anchor = null;
+  var drawnAt = 0;
+  var leaving = false;
+
+  function num(i) {
+    return (i < 9 ? '0' : '') + (i + 1);
+  }
+
+  function post(message) {
+    if (!frame.contentWindow) return;
+    frame.contentWindow.postMessage(message, origin);
+  }
 
   links.forEach(function (link, i) {
     var n = document.createElement('span');
@@ -24,116 +43,151 @@
   });
 
   var svgNS = 'http://www.w3.org/2000/svg';
+  var layer = document.createElement('div');
+  layer.className = 'hold-layer';
+  layer.setAttribute('aria-hidden', 'true');
   var svg = document.createElementNS(svgNS, 'svg');
   svg.setAttribute('class', 'hold-line');
-  svg.setAttribute('aria-hidden', 'true');
-  var line = document.createElementNS(svgNS, 'line');
+  var line = document.createElementNS(svgNS, 'polyline');
   var dot = document.createElementNS(svgNS, 'rect');
   dot.setAttribute('width', '5');
   dot.setAttribute('height', '5');
   svg.appendChild(line);
   svg.appendChild(dot);
-
-  var layer = document.createElement('div');
-  layer.className = 'hold-layer';
-
-  var curtain = document.createElement('div');
-  curtain.className = 'hold-curtain';
-
-  document.body.appendChild(svg);
+  var tag = document.createElement('span');
+  tag.className = 'hold-tag';
+  tag.hidden = true;
+  layer.appendChild(svg);
+  layer.appendChild(tag);
+  var veil = document.createElement('div');
+  veil.className = 'hold-veil';
   document.body.appendChild(layer);
-  document.body.appendChild(curtain);
+  document.body.appendChild(veil);
 
-  var labels = links.map(function (link, i) {
-    var el = document.createElement('a');
-    el.className = 'hold-label';
-    el.href = link.href;
-    el.textContent = num(i);
-    el.hidden = true;
-    el.setAttribute('aria-label', link.querySelector('.toc-name').textContent);
-    el.addEventListener('mouseenter', function () { setHot(i, true); });
-    el.addEventListener('mouseleave', function () { setHot(null, true); });
-    el.addEventListener('click', function (e) { open(e, i); });
-    layer.appendChild(el);
-    return el;
-  });
+  function gap() {
+    return parseFloat(getComputedStyle(list).columnGap) || 0;
+  }
 
-  // From a number on the ship, light the entry and the buildings the same way
-  // hovering the entry does. From the entry itself, ship-highlight.js already
-  // lights the buildings, so only the line and the number change here.
-  function setHot(i, fromLabel) {
+  // The line's run under the listing, half a column gap below it.
+  function lane() {
+    return list.getBoundingClientRect().bottom + gap() / 2;
+  }
+
+  // Tells the ship which entry is lit, where it sits across the page, and how
+  // high a tag can go before it would cover the listing.
+  function hold(i) {
     hot = i;
-    if (fromLabel) {
-      links.forEach(function (l, k) { l.classList.toggle('is-hot', k === i); });
-      post({ type: 'ship:highlight', group: i });
+    anchor = null;
+    if (i === null) {
+      post({ type: 'ship:hold', group: null });
+    } else {
+      var r = links[i].getBoundingClientRect();
+      var tagHeight = parseFloat(getComputedStyle(tag).lineHeight) || 0;
+      post({ type: 'ship:hold', group: i, x: r.left + r.width / 2, ceiling: lane() + tagHeight + 4 });
     }
     draw();
   }
 
   function draw() {
-    labels.forEach(function (el, i) {
-      var a = anchors && anchors[i];
-      if (!a || !a.visible || opening) { el.hidden = true; return; }
-      el.hidden = false;
-      el.style.transform = 'translate(' + a.x + 'px, ' + a.y + 'px) translate(-50%, -100%)';
-      el.classList.toggle('is-hot', i === hot);
-    });
-    var a = hot !== null && anchors && anchors[hot];
-    if (a && a.visible && !opening) {
-      var r = links[hot].getBoundingClientRect();
-      var x1 = r.left + r.width / 2, y1 = r.bottom;
-      var y2 = a.y - labels[hot].offsetHeight;
-      line.setAttribute('x1', x1);
-      line.setAttribute('y1', y1);
-      line.setAttribute('x2', a.x);
-      line.setAttribute('y2', y2);
-      dot.setAttribute('x', x1 - 2.5);
-      dot.setAttribute('y', y1 - 2.5);
-      svg.style.visibility = 'visible';
-    } else {
+    if (hot === null || !anchor) {
+      tag.hidden = true;
       svg.style.visibility = 'hidden';
+      return;
     }
+
+    var row = links[hot].getBoundingClientRect();
+    var x = Math.round(anchor.x);
+    var top = Math.round(anchor.y) - 4 - (parseFloat(getComputedStyle(tag).lineHeight) || 0);
+    var x0 = Math.round(row.right) + 1;
+    var y0 = Math.round(row.top + row.height / 2);
+    var gx = Math.round(row.right + gap() / 2);
+    var y1 = Math.round(lane());
+    var points = top > y1
+      ? [[x0, y0], [gx, y0], [gx, y1], [x, y1], [x, top]]
+      : [[x0, y0], [gx, y0], [gx, y1], [x, y1]];
+    var length = 0;
+    for (var k = 1; k < points.length; k++) {
+      length += Math.abs(points[k][0] - points[k - 1][0]) + Math.abs(points[k][1] - points[k - 1][1]);
+    }
+    var t = Math.min(1, (performance.now() - drawnAt) / DRAW_MS);
+
+    line.setAttribute('points', points.map(function (p) { return p.join(','); }).join(' '));
+    line.style.strokeDasharray = length;
+    line.style.strokeDashoffset = length * Math.pow(1 - t, 3);
+    dot.setAttribute('x', x0 - 2);
+    dot.setAttribute('y', y0 - 2);
+    svg.style.visibility = 'visible';
+
+    tag.textContent = num(hot);
+    tag.style.transform = 'translate(' + x + 'px, ' + top + 'px) translateX(-50%)';
+    tag.hidden = t < 1;
   }
 
-  function open(e, i) {
-    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-    e.preventDefault();
-    var a = anchors && anchors[i];
-    var x, y;
-    if (a && a.visible) { x = a.x; y = a.y; }
-    else { var r = links[i].getBoundingClientRect(); x = r.left + r.width / 2; y = r.top + r.height / 2; }
-    post({ type: 'ship:highlight', group: i });
-    opening = true;
-    draw();
-    curtain.style.setProperty('--x', x + 'px');
-    curtain.style.setProperty('--y', y + 'px');
-    curtain.classList.add('is-open');
-    var href = links[i].href;
-    setTimeout(function () { window.location.href = href; }, 620);
-  }
-
+  // The ship sends the tag's position every frame while an entry is lit.
   window.addEventListener('message', function (event) {
     if (event.origin !== origin || event.source !== frame.contentWindow) return;
-    var d = event.data;
-    if (!d || d.type !== 'ship:anchors' || !Array.isArray(d.anchors)) return;
-    anchors = [];
-    d.anchors.forEach(function (p) { anchors[p.group] = p; });
+    var data = event.data;
+    if (!data || data.type !== 'ship:anchor') return;
+    if (data.group === null || data.group !== hot) {
+      anchor = null;
+    } else {
+      if (!anchor) drawnAt = performance.now();
+      anchor = data;
+    }
     draw();
+  });
+
+  function open(event, i) {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    if (leaving) {
+      event.preventDefault();
+      return;
+    }
+    if (still.matches || !anchor || hot !== i) return;
+    event.preventDefault();
+    leaving = true;
+    links[i].classList.add('is-hot');
+    links[i].parentNode.classList.add('is-picked');
+    document.body.classList.add('holds-leaving');
+    post({ type: 'ship:focus', group: i });
+    var href = links[i].href;
+    setTimeout(function () {
+      veil.classList.add('is-on');
+      window.location.href = href;
+    }, FLY_MS);
+  }
+
+  // Once a click has started the flight, the entry stays lit even if the
+  // pointer drifts off it. Capturing listeners on the link itself run before
+  // ship-highlight.js's handlers, so they can stop it unlighting the ship.
+  links.forEach(function (link) {
+    ['mouseleave', 'blur'].forEach(function (type) {
+      link.addEventListener(type, function (event) {
+        if (leaving) event.stopImmediatePropagation();
+      }, true);
+    });
   });
 
   links.forEach(function (link, i) {
-    link.addEventListener('mouseenter', function () { setHot(i, false); });
-    link.addEventListener('focus', function () { setHot(i, false); });
-    link.addEventListener('mouseleave', function () { setHot(null, false); });
-    link.addEventListener('blur', function () { setHot(null, false); });
-    link.addEventListener('click', function (e) { open(e, i); });
+    link.addEventListener('mouseenter', function () { if (!leaving) hold(i); });
+    link.addEventListener('focus', function () { if (!leaving) hold(i); });
+    link.addEventListener('mouseleave', function () { if (!leaving) hold(null); });
+    link.addEventListener('blur', function () { if (!leaving) hold(null); });
+    link.addEventListener('click', function (event) { open(event, i); });
   });
 
-  window.addEventListener('resize', draw);
-  window.addEventListener('pageshow', function (e) {
-    if (!e.persisted) return;
-    opening = false;
-    curtain.classList.remove('is-open');
-    draw();
+  // Coming back from an artist page with the back button: undo the flight.
+  window.addEventListener('pageshow', function (event) {
+    if (!event.persisted) return;
+    leaving = false;
+    veil.classList.remove('is-on');
+    document.body.classList.remove('holds-leaving');
+    links.forEach(function (link) {
+      link.classList.remove('is-hot');
+      link.parentNode.classList.remove('is-picked');
+    });
+    hold(null);
+    post({ type: 'ship:highlight', group: null });
+    post({ type: 'ship:focus', group: null });
   });
 })();

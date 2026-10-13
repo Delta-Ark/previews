@@ -1,6 +1,7 @@
-/* Numbered holds: a layer on top of the homepage. Uses only the palette and
-   the single type size from main.css. */
+/* Numbered holds: a layer on top of the homepage, drawn by hold-links.js.
+   It uses only the palette and the one type size from main.css. */
 
+/* Each entry's number, before the name. Gray at rest, black when lit. */
 .toc-num {
   flex: 0 0 auto;
   color: var(--neutral-gray);
@@ -11,7 +12,7 @@
   color: var(--black);
 }
 
-/* Lit from a number on the ship, the entry looks the same as when hovered. */
+/* After a click the entry stays lit as if hovered, wherever the pointer goes. */
 .toc-link.is-hot {
   background: var(--white);
 }
@@ -25,6 +26,8 @@
   border-bottom-color: var(--black);
 }
 
+/* The line from the lit entry to its tower, and the tag with its number on
+   top of the tower. Above the ship, under the listing's links. */
 .hold-layer {
   position: fixed;
   inset: 0;
@@ -32,42 +35,17 @@
   pointer-events: none;
 }
 
-.hold-label {
-  position: absolute;
-  top: 0;
-  left: 0;
-  padding: 0 var(--pad-x);
-  line-height: 1.2rem;
-  white-space: nowrap;
-  text-decoration: none;
-  color: var(--neutral-gray);
-  background: var(--black);
-  border: 1px solid var(--neutral-gray);
-  pointer-events: auto;
-}
-
-.hold-label[hidden] {
-  display: none;
-}
-
-.hold-label:hover,
-.hold-label.is-hot {
-  color: var(--black);
-  background: var(--peach-red);
-  border-color: var(--peach-red);
-}
-
 .hold-line {
-  position: fixed;
+  position: absolute;
   inset: 0;
-  z-index: 1;
   width: 100%;
   height: 100%;
-  pointer-events: none;
+  overflow: visible;
   visibility: hidden;
 }
 
-.hold-line line {
+.hold-line polyline {
+  fill: none;
   stroke: var(--sea-green);
   stroke-width: 1;
 }
@@ -76,17 +54,34 @@
   fill: var(--sea-green);
 }
 
-/* On click, the page closes into black from the hold, then the artist page loads. */
-.hold-curtain {
+/* The same white as the lit entry, so the two read as a pair. */
+.hold-tag {
+  position: absolute;
+  top: 0;
+  left: 0;
+  padding: 0 var(--pad-x);
+  line-height: var(--line);
+  white-space: nowrap;
+  color: var(--black);
+  background: var(--white);
+}
+
+/* During the flight only the clicked entry stays on the page. */
+.holds-leaving .toc-entry:not(.is-picked),
+.holds-leaving .toc-title {
+  visibility: hidden;
+}
+
+/* The cut to black as the artist page loads. */
+.hold-veil {
   position: fixed;
   inset: 0;
   z-index: 2;
   background: var(--black);
   pointer-events: none;
-  clip-path: circle(0 at var(--x, 50%) var(--y, 50%));
-  transition: clip-path 600ms cubic-bezier(.6, 0, .2, 1);
+  visibility: hidden;
 }
 
-.hold-curtain.is-open {
-  clip-path: circle(150vmax at var(--x, 50%) var(--y, 50%));
+.hold-veil.is-on {
+  visibility: visible;
 }
