@@ -135,7 +135,7 @@
     svg.style.visibility = 'visible';
 
     tag.style.transform = 'translate(' + x + 'px, ' + top + 'px) translateX(-50%)';
-    tag.style.visibility = t < 1 ? 'hidden' : 'visible';
+    tag.style.visibility = t < 0.8 ? 'hidden' : 'visible';
   }
 
   // The ship sends the tag's position every frame while an entry is lit.
