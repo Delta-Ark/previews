@@ -1,10 +1,10 @@
 // Numbered holds, layered on top of the homepage. Each entry gets a number.
-// While an entry is lit, the ship picks one of its towers and reports where
-// that tower's top is on screen (ship:anchor). The number sits there on a
-// white tag, and a line runs to it from the end of the entry: down the gap
-// between columns, along under the listing, and down onto the tag. A click
-// flies the view up to that tower, then cuts to black and opens the artist
-// page.
+// While an entry is lit, the ship picks one of its apartments and reports
+// where it is on screen (ship:anchor). The number sits on it on a white tag,
+// and a line runs to the tag from the end of the entry: down the gap between
+// columns, along under the listing, then down onto a rooftop, or down beside
+// the tower and in at the apartment's floor. A click flies the view up to the
+// apartment, then cuts to black and opens the artist page.
 //
 // ship-highlight.js still does the lighting. This only adds to it.
 (function () {
@@ -56,7 +56,7 @@
   svg.appendChild(dot);
   var tag = document.createElement('span');
   tag.className = 'hold-tag';
-  tag.hidden = true;
+  tag.style.visibility = 'hidden';
   layer.appendChild(svg);
   layer.appendChild(tag);
   var veil = document.createElement('div');
@@ -73,9 +73,14 @@
     return list.getBoundingClientRect().bottom + gap() / 2;
   }
 
-  // Tells the ship which entry is lit, where it sits across the page, and how
-  // high a tag can go before it would cover the listing. A click focuses the
-  // entry it lands on, which is already lit, so that changes nothing.
+  function tagHeight() {
+    return parseFloat(getComputedStyle(tag).lineHeight) || 0;
+  }
+
+  // Tells the ship which entry is lit, where it sits across the page, where
+  // the line runs under the listing, and how high a tag can sit before it
+  // would cover the listing. A click focuses the entry it lands on, which is
+  // already lit, so that changes nothing.
   function hold(i) {
     if (i === hot) return;
     hot = i;
@@ -84,29 +89,38 @@
       post({ type: 'ship:hold', group: null });
     } else {
       var r = links[i].getBoundingClientRect();
-      var tagHeight = parseFloat(getComputedStyle(tag).lineHeight) || 0;
-      post({ type: 'ship:hold', group: i, x: r.left + r.width / 2, ceiling: lane() + tagHeight + 4 });
+      var y1 = lane();
+      post({ type: 'ship:hold', group: i, x: r.left + r.width / 2, lane: y1, ceiling: y1 + tagHeight() / 2 + 3, tag: tagHeight() });
     }
     draw();
   }
 
   function draw() {
     if (hot === null || !anchor) {
-      tag.hidden = true;
+      tag.style.visibility = 'hidden';
       svg.style.visibility = 'hidden';
       return;
     }
 
+    tag.textContent = num(hot);
     var row = links[hot].getBoundingClientRect();
     var x = Math.round(anchor.x);
-    var top = Math.round(anchor.y) - 4 - (parseFloat(getComputedStyle(tag).lineHeight) || 0);
+    var y = Math.round(anchor.y);
+    var top = Math.round(y - tagHeight() / 2);
     var x0 = Math.round(row.right) + 1;
     var y0 = Math.round(row.top + row.height / 2);
     var gx = Math.round(row.right + gap() / 2);
     var y1 = Math.round(lane());
-    var points = top > y1
-      ? [[x0, y0], [gx, y0], [gx, y1], [x, y1], [x, top]]
-      : [[x0, y0], [gx, y0], [gx, y1], [x, y1]];
+    var points;
+    if (anchor.drop == null) {
+      points = top > y1
+        ? [[x0, y0], [gx, y0], [gx, y1], [x, y1], [x, top]]
+        : [[x0, y0], [gx, y0], [gx, y1], [x, y1]];
+    } else {
+      var dx = Math.round(anchor.drop);
+      var edge = Math.round(dx < x ? x - tag.offsetWidth / 2 : x + tag.offsetWidth / 2);
+      points = [[x0, y0], [gx, y0], [gx, y1], [dx, y1], [dx, y], [edge, y]];
+    }
     var length = 0;
     for (var k = 1; k < points.length; k++) {
       length += Math.abs(points[k][0] - points[k - 1][0]) + Math.abs(points[k][1] - points[k - 1][1]);
@@ -120,9 +134,8 @@
     dot.setAttribute('y', y0 - 2);
     svg.style.visibility = 'visible';
 
-    tag.textContent = num(hot);
     tag.style.transform = 'translate(' + x + 'px, ' + top + 'px) translateX(-50%)';
-    tag.hidden = t < 1;
+    tag.style.visibility = t < 1 ? 'hidden' : 'visible';
   }
 
   // The ship sends the tag's position every frame while an entry is lit.

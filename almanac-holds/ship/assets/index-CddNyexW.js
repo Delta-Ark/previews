@@ -539,30 +539,36 @@ var<${n}> ${e} : ${a};`}},bM=new mj,xM=new hj,SM=new Map([[Int8Array,[`sint8`,`s
 
 /* ── Added on top for the numbered-holds layer on the homepage ─────────────────
    Nothing above this line changed. This reads the ship's own state (sI, eI,
-   tI, DI, aI, PF) and talks to the page by postMessage, like the code above.
+   tI, DI, aI) and talks to the page by postMessage, like the code above.
 
-   ship:hold {group, x, ceiling}  The page's lit entry, its centre across the
-                                  page, and the lowest a tag's top can sit
-                                  without covering the listing (viewport px).
-   ship:anchor {group, x, y}      Sent every frame while the hold stands: the
-                                  top of the tower picked for the entry, rising
-                                  with the storeys as they grow.
-   ship:focus {group}             Flies the main view up to that tower. With
-                                  group null, back to the opening view.
+   ship:hold {group, x, lane, ceiling, tag}
+       The page's lit entry: its centre across the page, the line's run under
+       the listing, the highest a tag's centre can sit without covering the
+       listing, and the tag's height (viewport px).
+   ship:anchor {group, x, y, drop}
+       Sent every frame while the hold stands: the centre on screen of the
+       apartment picked for the entry, and the x where the line comes down
+       beside its tower before turning in to it (null: straight down onto it).
+   ship:focus {group}
+       Flies the main view up to that apartment. Group null: back out to the
+       opening view.
 
-   The tower is the lit group's tallest near the entry, with its top below the
-   listing and no taller lit tower in the way of the line dropping onto it. */
+   The apartment is one of the lit group's own modules, near the entry across
+   the page, at a height that varies from entry to entry, in plain view of
+   the camera, with a clear way down for the line. */
 ;(() => {
   const V = eI.position.constructor;
   const v = new V();
   const up = new V(0, 1, 0);
   const home = { position: eI.position.clone(), target: tI.target.clone() };
-  let hold = null, tower = null, key = null, born = 0, live = false, info = null;
+  const e = 1e-3;
+  let hold = null, apt = null, key = null, live = false, info = null;
 
   // Each module's box and grid cell, by group, from the cargo's base positions.
   function modules(cargo) {
     if (info && info.cargo === cargo) return info;
     const ud = cargo.userData, bp = ud.basePositions, byGroup = [];
+    let deck = Infinity;
     ud.moduleRanges.forEach((r, m) => {
       let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity, z0 = Infinity, z1 = -Infinity;
       for (let i = r.start; i < r.start + r.count; i++) {
@@ -571,54 +577,114 @@ var<${n}> ${e} : ${a};`}},bM=new mj,xM=new hj,SM=new Map([[Int8Array,[`sint8`,`s
         if (y < y0) y0 = y; if (y > y1) y1 = y;
         if (z < z0) z0 = z; if (z > z1) z1 = z;
       }
+      if (y0 < deck) deck = y0;
       const d = ud.modules[m];
-      (byGroup[ud.moduleGroup[m]] ??= []).push({ x0, x1, y0, y1, z0, z1, i: d.i, k: d.k, y: d.y, h: d.h, fw: d.fw, fd: d.fd });
+      (byGroup[ud.moduleGroup[m]] ??= []).push({ start: r.start, count: r.count, crawl: !!ud.crawlable?.[m],
+        x0, x1, y0, y1, z0, z1, i: d.i, k: d.k, y: d.y, h: d.h, fw: d.fw, fd: d.fd });
     });
-    return (info = { cargo, byGroup });
+    return (info = { cargo, byGroup, deck });
   }
 
-  function screen(x, y, z, matrix) {
+  const sameColumn = (a, b) => a.i < b.i + b.fw && b.i < a.i + a.fw && a.k < b.k + b.fd && b.k < a.k + a.fd;
+
+  function project(x, y, z, matrix) {
     v.set(x, y, z).applyMatrix4(matrix).project(eI);
     return [(v.x + 1) / 2 * window.innerWidth, (1 - v.y) / 2 * window.innerHeight];
   }
 
-  // The lit group's towers: each column's top module, plus any storeys the
-  // highlight grew on it (the mesh with a reach attribute). col holds the
-  // grown storeys' vertices as [reach, y], so the tag can rise with them.
+  // The box's outline on screen, as a rectangle.
+  function outline(s, matrix) {
+    s.sx0 = s.sy0 = Infinity; s.sx1 = s.sy1 = -Infinity;
+    for (const x of [s.x0, s.x1]) for (const y of [s.y0, s.y1]) for (const z of [s.z0, s.z1]) {
+      const [a, b] = project(x, y, z, matrix);
+      if (a < s.sx0) s.sx0 = a; if (a > s.sx1) s.sx1 = a;
+      if (b < s.sy0) s.sy0 = b; if (b > s.sy1) s.sy1 = b;
+    }
+    return s;
+  }
+
+  // Where a ray from o along d first enters box b, as a multiple of d.
+  function enter(o, d, b) {
+    let near = 0, far = Infinity;
+    for (const [p, q, lo, hi] of [[o.x, d.x, b.x0, b.x1], [o.y, d.y, b.y0, b.y1], [o.z, d.z, b.z0, b.z1]]) {
+      if (Math.abs(q) < 1e-9) { if (p < lo || p > hi) return Infinity; continue; }
+      let a = (lo - p) / q, c = (hi - p) / q;
+      if (a > c) [a, c] = [c, a];
+      if (a > near) near = a;
+      if (c < far) far = c;
+      if (near > far) return Infinity;
+    }
+    return near;
+  }
+
+  // How many of the apartment's centre and two near faces the eye can see.
+  function seen(eye, a, solids) {
+    const cx = (a.x0 + a.x1) / 2, cy = (a.y0 + a.y1) / 2, cz = (a.z0 + a.z1) / 2;
+    const points = [[cx, cy, cz], [eye.x > cx ? a.x1 : a.x0, cy, cz], [cx, cy, eye.z > cz ? a.z1 : a.z0]];
+    return points.filter(([x, y, z]) => {
+      const d = { x: x - eye.x, y: y - eye.y, z: z - eye.z };
+      const self = enter(eye, d, a);
+      return !solids.some(s => s !== a && enter(eye, d, s) < self - 1e-4);
+    }).length;
+  }
+
   function pick(cargo, mesh, h) {
-    const own = modules(cargo).byGroup[h.group] ?? [], e = 1e-3, m = cargo.matrixWorld;
-    const tops = own.filter(o => !own.some(b => b !== o && b.y >= o.y + o.h &&
-      b.i < o.i + o.fw && o.i < b.i + b.fw && b.k < o.k + o.fd && o.k < b.k + b.fd));
+    const { byGroup, deck } = modules(cargo);
+    const own = byGroup[h.group] ?? [];
+    if (!own.length) return null;
+    const matrix = cargo.matrixWorld, eye = eI.position.clone().applyMatrix4(matrix.clone().invert());
     const P = mesh ? mesh.geometry.attributes.position.array : [];
-    const Q = mesh ? mesh.geometry.attributes.reach.array : [];
-    const towers = tops.map(o => {
-      let top = o.y1, bottom = o.y0;
-      const col = [];
-      for (let i = 0; i < Q.length; i++) {
-        const x = P[i * 3], y = P[i * 3 + 1], z = P[i * 3 + 2];
-        if (x < o.x0 - e || x > o.x1 + e || z < o.z0 - e || z > o.z1 + e) continue;
-        if (y > o.y1 + e) { col.push([Q[i], y]); if (y > top) top = y; }
-        else if (y < bottom) bottom = y;
+    const now = cargo.geometry.attributes.position.array;
+
+    // Everything lit: the group's modules, the stilts the highlight runs down
+    // under each one, and the storeys it grows on the top ones.
+    const solids = own.map(o => ({ ...o, base: o }));
+    for (const o of own) {
+      const under = own.filter(b => b !== o && sameColumn(b, o) && b.y1 <= o.y0 + e);
+      const floor = under.length ? Math.max(...under.map(b => b.y1)) : deck;
+      if (floor < o.y0 - e) solids.push({ ...o, y0: floor, y1: o.y0, base: o });
+      if (own.some(b => b !== o && sameColumn(b, o) && b.y >= o.y + o.h)) continue;
+      let top = o.y1;
+      for (let i = 0; i < P.length; i += 3) {
+        if (P[i + 1] > top && P[i] >= o.x0 - e && P[i] <= o.x1 + e && P[i + 2] >= o.z0 - e && P[i + 2] <= o.z1 + e) top = P[i + 1];
       }
-      col.sort((a, b) => a[0] - b[0]);
-      const t = { cx: (o.x0 + o.x1) / 2, cz: (o.z0 + o.z1) / 2, roof: o.y1, top, bottom, col };
-      [t.sx, t.sy] = screen(t.cx, top, t.cz, m);
-      t.sx0 = Infinity; t.sx1 = -Infinity;
-      for (const [x, z] of [[o.x0, o.z0], [o.x1, o.z0], [o.x0, o.z1], [o.x1, o.z1]]) {
-        const sx = screen(x, top, z, m)[0];
-        if (sx < t.sx0) t.sx0 = sx; if (sx > t.sx1) t.sx1 = sx;
+      if (top > o.y1 + e) solids.push({ ...o, y0: o.y1, y1: top, base: o });
+    }
+    solids.forEach(s => outline(s, matrix));
+
+    // Each entry aims for its own height up its tower, spread by the golden ratio.
+    const aim = (h.group + 1) * 0.618034 % 1;
+    let best = null;
+    own.forEach((o, n) => {
+      const a = solids[n];
+      const last = (o.start + o.count - 1) * 3, first = o.start * 3;
+      if (now[first] === now[last] && now[first + 1] === now[last + 1] && now[first + 2] === now[last + 2]) return;
+      const visible = seen(eye, a, solids);
+      if (!visible) return;
+      const [sx, sy] = project((o.x0 + o.x1) / 2, (o.y0 + o.y1) / 2, (o.z0 + o.z1) / 2, matrix);
+      if (sy < h.ceiling || sx < 0 || sx > window.innerWidth) return;
+      const above = solids.filter(s => s !== a && sameColumn(s, o) && s.y0 >= o.y1 - e);
+      const others = solids.filter(s => s !== a && !above.includes(s));
+      const top = Math.max(o.y1, ...above.map(s => s.y1));
+      const height = ((o.y0 + o.y1) / 2 - deck) / Math.max(e, top - deck);
+      const free = (x0, x1, y) => !others.some(s => s.sx0 - 3 < x1 && s.sx1 + 3 > x0 && s.sy0 < y && s.sy1 > h.lane);
+
+      // Straight down onto a rooftop; otherwise down beside the tower, on the
+      // side facing the entry first, then in to the apartment.
+      let side = null;
+      if (!above.length && free(sx - 14, sx + 14, sy - h.tag / 2)) side = 0;
+      else {
+        const lo = Math.min(a.sx0, ...above.map(s => s.sx0)) - 10, hi = Math.max(a.sx1, ...above.map(s => s.sx1)) + 10;
+        for (const [s, x] of h.x < sx ? [[-1, lo], [1, hi]] : [[1, hi], [-1, lo]]) {
+          if (free(x, x, sy)) { side = s; break; }
+        }
       }
-      return t;
+      const small = Math.min(a.sx1 - a.sx0, a.sy1 - a.sy0) < 12;
+      const score = Math.abs(sx - h.x) / 150 + 2.2 * Math.abs(height - aim) + (side === null ? 1.5 : 0) +
+        (o.crawl ? 0.25 : 0) + (small ? 0.6 : 0) + (visible < 2 ? 0.3 : 0);
+      if (!best || score < best.score) best = { score, box: a, above, solids, side: side ?? 0 };
     });
-    if (!towers.length) return null;
-    const open = c => !towers.some(t => t !== c && t.sy < c.sy - 1 && t.sx0 - 6 < c.sx + 14 && t.sx1 + 6 > c.sx - 14);
-    const clear = towers.filter(t => t.sy > h.ceiling);
-    const deck = Math.min(...towers.map(t => t.bottom));
-    const most = Math.max(...clear.map(t => t.top), deck);
-    const tall = t => t.top - deck >= 0.7 * (most - deck);
-    const near = list => list.sort((a, b) => Math.abs(a.sx - h.x) - Math.abs(b.sx - h.x))[0];
-    return near(clear.filter(t => tall(t) && open(t))) ?? near(clear.filter(open)) ??
-      near(clear.filter(tall)) ?? towers.sort((a, b) => b.sy - a.sy)[0];
+    return best;
   }
 
   function say(message) {
@@ -630,23 +696,32 @@ var<${n}> ${e} : ${a};`}},bM=new mj,xM=new hj,SM=new Map([[Int8Array,[`sint8`,`s
     const d = event.data;
     if (d?.type === `ship:hold`) {
       hold = Number.isInteger(d.group) ? d : null;
-      tower = null;
+      apt = null;
       key = null;
       return;
     }
     if (d?.type !== `ship:focus`) return;
     if (d.group == null) { DI.fly(home.position, home.target); return; }
-    if (!tower || !hold || hold.group !== d.group) return;
-    // Up close, a little lower and a little round from where the view is now.
-    const target = new V(tower.cx, tower.bottom + (tower.top - tower.bottom) * 0.9, tower.cz)
-      .applyMatrix4(sI.userData.cargo.matrixWorld);
-    const dir = eI.position.clone().sub(tI.target).normalize().applyAxisAngle(up, 0.3);
-    dir.y *= 0.35;
-    dir.normalize();
-    DI.fly(target.clone().addScaledVector(dir, 6), target);
+    if (!apt || !hold || hold.group !== d.group) return;
+    // Up close, lower and a little round from where the view is now, from
+    // wherever the apartment stays in sight.
+    const matrix = sI.userData.cargo.matrixWorld, back = matrix.clone().invert(), b = apt.box;
+    const target = new V((b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, (b.z0 + b.z1) / 2).applyMatrix4(matrix);
+    const from = eI.position.clone().sub(tI.target).normalize();
+    let shot = null;
+    for (const [turn, drop] of [[0.3, 0.35], [-0.3, 0.35], [0, 0.35], [0.3, 1], [-0.3, 1], [0, 1]]) {
+      const dir = from.clone().applyAxisAngle(up, turn);
+      dir.y *= drop;
+      const position = target.clone().addScaledVector(dir.normalize(), 5);
+      const eye = position.clone().applyMatrix4(back);
+      const inside = apt.solids.some(s => eye.x > s.x0 && eye.x < s.x1 && eye.y > s.y0 && eye.y < s.y1 && eye.z > s.z0 && eye.z < s.z1);
+      if (!inside && seen(eye, b, apt.solids)) { shot = position; break; }
+      shot ??= position;
+    }
+    DI.fly(shot, target);
   });
 
-  function frame(now) {
+  function frame() {
     requestAnimationFrame(frame);
     const cargo = sI.userData.cargo;
     if (!hold || aI !== hold.group || !sI.visible) {
@@ -655,14 +730,17 @@ var<${n}> ${e} : ${a};`}},bM=new mj,xM=new hj,SM=new Map([[Int8Array,[`sint8`,`s
     }
     const mesh = cargo.children.find(c => c.geometry?.attributes.reach) ?? null;
     const k = mesh ?? cargo;
-    if (k !== key) { key = k; born = now; tower = pick(cargo, mesh, hold); }
-    if (!tower) return;
-    // The highlight grows its storeys at PF per second, as the code above does.
-    const reach = (now - born) / 1000 * PF;
-    let y = tower.roof;
-    for (const [q, yy] of tower.col) { if (q > reach) break; if (yy > y) y = yy; }
-    const [x, sy] = screen(tower.cx, y, tower.cz, cargo.matrixWorld);
-    say({ type: `ship:anchor`, group: hold.group, x, y: sy });
+    if (k !== key) { key = k; apt = pick(cargo, mesh, hold); }
+    if (!apt) return;
+    const matrix = cargo.matrixWorld, b = apt.box;
+    const [x, y] = project((b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, (b.z0 + b.z1) / 2, matrix);
+    let drop = null;
+    if (apt.side) {
+      let lo = Infinity, hi = -Infinity;
+      for (const s of [b, ...apt.above]) { outline(s, matrix); lo = Math.min(lo, s.sx0); hi = Math.max(hi, s.sx1); }
+      drop = apt.side < 0 ? lo - 10 : hi + 10;
+    }
+    say({ type: `ship:anchor`, group: hold.group, x, y, drop });
     live = true;
   }
   requestAnimationFrame(frame);

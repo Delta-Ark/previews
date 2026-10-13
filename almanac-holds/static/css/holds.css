@@ -26,8 +26,8 @@
   border-bottom-color: var(--black);
 }
 
-/* The line from the lit entry to its tower, and the tag with its number on
-   top of the tower. Above the ship, under the listing's links. */
+/* The line from the lit entry to its apartment, and the tag with its number
+   on the apartment. Above the ship, under the listing's links. */
 .hold-layer {
   position: fixed;
   inset: 0;
